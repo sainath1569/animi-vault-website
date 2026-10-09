@@ -27,9 +27,19 @@ Other scripts: `npm run build`, `npm run start`, `npm run lint`.
 - **Video.** The player loads `hlsProxyUrl` / `streamUrl` straight from the scraper's proxy. Video bytes never pass through this app.
 - **Fallbacks.** When a source fails, the watch page tries the next server, then AnimeHeaven, then the embed iframe.
 - **Guests.** Guests track progress, lists and history in localStorage. It's merged into their account when they sign in.
-- **Admin.** The admin panel lives at `/admin`. Non-admins get a 404, both in `src/proxy.ts` and in each page. The account matching `ADMIN_EMAIL` becomes admin on signup, or when `db:migrate` runs.
+- **Admin.** The admin panel lives at `/admin`. Non-admins get a 404, both in `src/proxy.ts` and in each page. `ADMIN_EMAIL` decides the first admin. It's applied at every server start (`src/instrumentation.ts`), so the account is promoted if it exists, or becomes admin when it signs up. Admins can promote others from Admin → Users.
+
+## Email verification codes
+
+Sign-up is confirmed with a code typed on the site, not a link. The app counts down 10 minutes and allows a resend after 60 seconds. Supabase enforces the real expiry, so set these once in the Supabase dashboard:
+
+1. **Authentication → Email Templates → Confirm signup:** set the subject to `Your AniBeast verification code` and paste in `supabase/templates/confirm-signup.html`. It must contain `{{ .Token }}`.
+2. **Authentication → Providers → Email:** set **Email OTP Expiration** to `600` seconds.
+3. **Custom SMTP (Project Settings → Authentication → SMTP):** Supabase's built-in email only reaches your project's team members and sends a few per hour. Use Resend or another SMTP provider before real users sign up.
 
 ## Deploy to Railway
+
+Full step-by-step guide (Railway or Vercel, env variables, checks, troubleshooting): [DEPLOY.md](DEPLOY.md).
 
 1. Push to GitHub and create a Railway service from the repo. Railway detects Next.js; build `npm run build`, start `npm run start`.
 2. Paste the variables from `.env.local` into the service's Variables. `DATABASE_URL` isn't needed at runtime. Set `NEXT_PUBLIC_SITE_URL` to the production URL.

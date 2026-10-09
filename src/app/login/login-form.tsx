@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { AuthShell, Field, Notice, SubmitButton } from "@/components/auth/auth-shell";
 import { Divider, GoogleButton } from "@/components/auth/google-button";
+import { OtpVerify } from "@/components/auth/otp-verify";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 
 /** Only allow same-site relative redirects. */
@@ -20,6 +21,7 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(params.get("error"));
+  const [pending, setPending] = useState<{ email: string; sentAt: number } | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -29,14 +31,16 @@ export function LoginForm() {
     setError(null);
     const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error) {
+      if (/email not confirmed/i.test(error.message)) {
+        // Never verified: send a fresh code and ask for it here.
+        const { error: resendError } = await supabase.auth.resend({ type: "signup", email: email.trim() });
+        setLoading(false);
+        if (resendError && !/rate|seconds/i.test(resendError.message)) return setError(resendError.message);
+        setPending({ email: email.trim(), sentAt: Date.now() });
+        return;
+      }
       setLoading(false);
-      setError(
-        /email not confirmed/i.test(error.message)
-          ? "Please confirm your email first. Check your inbox for the link."
-          : /invalid login/i.test(error.message)
-            ? "Wrong email or password."
-            : error.message,
-      );
+      setError(/invalid login/i.test(error.message) ? "Wrong email or password." : error.message);
       return;
     }
     const { data: profile } = await supabase.from("profiles").select("banned, banned_reason").eq("id", data.user.id).maybeSingle();
@@ -48,6 +52,29 @@ export function LoginForm() {
     }
     router.replace(next);
     router.refresh();
+  }
+
+  if (pending) {
+    return (
+      <AuthShell
+        title="Verify your email"
+        subtitle={
+          <>
+            Your email isn&apos;t verified yet. We sent a code to <strong className="text-fg">{pending.email}</strong>.
+          </>
+        }
+      >
+        <OtpVerify
+          email={pending.email}
+          sentAt={pending.sentAt}
+          onVerified={() => {
+            router.replace(next);
+            router.refresh();
+          }}
+          onChangeEmail={() => setPending(null)}
+        />
+      </AuthShell>
+    );
   }
 
   return (

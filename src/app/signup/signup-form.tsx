@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { AuthShell, Field, Notice, SubmitButton } from "@/components/auth/auth-shell";
 import { Divider, GoogleButton } from "@/components/auth/google-button";
+import { OtpVerify } from "@/components/auth/otp-verify";
 import { getSupabaseBrowser } from "@/lib/supabase/client";
 import { safeNext } from "../login/login-form";
 
 export function SignupForm() {
+  const router = useRouter();
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
   const [username, setUsername] = useState("");
@@ -16,7 +18,7 @@ export function SignupForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sentTo, setSentTo] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ email: string; sentAt: number } | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,19 +45,33 @@ export function SignupForm() {
       return setError("An account with this email already exists. Try signing in.");
     }
     if (data.session) {
-      window.location.href = next;
+      // Email confirmation is turned off in Supabase: already signed in.
+      router.replace(next);
+      router.refresh();
       return;
     }
-    setSentTo(email.trim());
+    setPending({ email: email.trim(), sentAt: Date.now() });
   }
 
-  if (sentTo) {
+  if (pending) {
     return (
-      <AuthShell title="Check your email" subtitle={<>We sent a confirmation link to <strong className="text-fg">{sentTo}</strong>.</>}>
-        <p className="text-center text-sm text-muted">Click the link to activate your account, then come back here.</p>
-        <Link href="/login" className="mt-6 block text-center text-sm font-semibold text-accent hover:underline">
-          Back to sign in
-        </Link>
+      <AuthShell
+        title="Verify your email"
+        subtitle={
+          <>
+            We sent a code to <strong className="text-fg">{pending.email}</strong>. It works for 10 minutes.
+          </>
+        }
+      >
+        <OtpVerify
+          email={pending.email}
+          sentAt={pending.sentAt}
+          onVerified={() => {
+            router.replace(next);
+            router.refresh();
+          }}
+          onChangeEmail={() => setPending(null)}
+        />
       </AuthShell>
     );
   }
